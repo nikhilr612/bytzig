@@ -5,14 +5,53 @@ const SDL_H = @cImport({
     @cInclude("SDL2/SDL.h");
 });
 
-const SdlError = error{
-    FailedInit,
-    FailedWindow,
-    FailedRenderer,
-    FailedDraw,
-};
+const SdlError = error{ FailedInit, FailedWindow, FailedRenderer, FailedDraw, FailedOpenAudio, FailedQueueAudio };
 
 pub const RgbColor = struct { red: u8, green: u8, blue: u8 };
+
+/// A struct for audio-specifications for audio in `SDL_H.AUDIO_U8` format (unsigned 8-bit)
+pub const RawAudioSpec = struct {
+    /// The number of samples per second.
+    frequency: usize,
+    /// The number of samples in audio buffer.
+    samples: u16,
+    /// The number of channels in audio.
+    channels: u8,
+};
+
+/// Manage an audio device provided by SDL2.
+pub const AudioContext = struct {
+    spec: SDL_H.SDL_AudioSpec,
+    device_id: SDL_H.SDL_AudioDeviceID,
+    /// Release SDL Audio-related resources.
+    pub fn release(self: *const AudioContext) void {
+        SDL_H.SDL_CloseAudioDevice(self.device_id);
+    }
+    /// "Render" some samples from the audio buffer.
+    /// The buffer must contain at least `samples * channels` bytes
+    pub fn render(self: *const AudioContext, buffer: []const u8) SdlError!void {
+        if (SDL_H.SDL_QueueAudio(self.device_id, buffer.ptr, self.spec.samples * self.spec.channels) != 0) {
+            return SdlError.FailedQueueAudio;
+        }
+    }
+};
+
+/// Open an audio device which supports specified audio spec.
+pub fn getAudioContext(spec: RawAudioSpec) SdlError!AudioContext {
+    const desired_spec = SDL_H.SDL_AudioSpec{ .freq = @intCast(spec.frequency), .format = SDL_H.AUDIO_S8, .channels = spec.channels, .samples = spec.samples, .callback = null };
+    var obtained_spec = SDL_H.SDL_AudioSpec{}; // Obtained spec may be slightly different.
+
+    // Open an Audio Device for use.
+    const device_id = SDL_H.SDL_OpenAudioDevice(null, 0, &desired_spec, &obtained_spec, SDL_H.SDL_AUDIO_ALLOW_ANY_CHANGE);
+
+    // 0 is not a valid device ID, and a placeholder for error.
+    if (device_id == 0) return SdlError.FailedOpenAudio;
+
+    SDL_H.SDL_PauseAudioDevice(device_id, 0);
+
+    // Return the context.
+    return AudioContext{ .spec = obtained_spec, .device_id = device_id };
+}
 
 /// Create a color from 8-bits using 216 colour palette (0..215).
 /// Color 216..255 are unused, and set to black.
@@ -46,7 +85,7 @@ pub fn initAll() SdlError!void {
 }
 
 pub fn createWindow(title: [:0]const u8, width: i32, height: i32) SdlError!*SDL_H.SDL_Window {
-    var ret: ?*SDL_H.SDL_Window = SDL_H.SDL_CreateWindow(title, SDL_H.SDL_WINDOWPOS_UNDEFINED, SDL_H.SDL_WINDOWPOS_UNDEFINED, width, height, SDL_H.SDL_WINDOW_SHOWN);
+    const ret: ?*SDL_H.SDL_Window = SDL_H.SDL_CreateWindow(title, SDL_H.SDL_WINDOWPOS_UNDEFINED, SDL_H.SDL_WINDOWPOS_UNDEFINED, width, height, SDL_H.SDL_WINDOW_SHOWN);
     if (ret) |r| {
         return r;
     } else {
@@ -59,7 +98,7 @@ pub fn destroyWindow(in: *SDL_H.SDL_Window) void {
 }
 
 pub fn createRenderer(window: *SDL_H.SDL_Window) SdlError!*SDL_H.SDL_Renderer {
-    var ret: ?*SDL_H.SDL_Renderer = SDL_H.SDL_CreateRenderer(window, -1, SDL_H.SDL_RENDERER_ACCELERATED);
+    const ret: ?*SDL_H.SDL_Renderer = SDL_H.SDL_CreateRenderer(window, -1, SDL_H.SDL_RENDERER_ACCELERATED);
     if (ret) |r| {
         return r;
     } else {
@@ -101,7 +140,7 @@ pub fn handle_events(flag: *[16]bool) bool {
                 return false;
             },
             SDL_H.SDL_KEYDOWN => {
-                var key_evt = evt.key;
+                const key_evt = evt.key;
                 switch (key_evt.keysym.sym) {
                     SDL_H.SDLK_0 => {
                         flag[0] = true;

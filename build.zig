@@ -19,12 +19,12 @@ pub fn build(b: *std.Build) void {
         .name = "bytzig",
         // In this case the main source file is merely a path, however, in more
         // complicated build scripts, this could be a generated file.
-        .root_source_file = .{ .path = "src/main.zig" },
+        .root_source_file = b.path("src/main.zig"), //.{ .path = "src/main.zig" },
         .target = target,
         .optimize = optimize,
     });
-    exe.addIncludePath(.{ .path = "include/" });
-    exe.addLibraryPath(.{ .path = "lib/" });
+    exe.addIncludePath(b.path("include/")); //.{ .path = "include/" });
+    exe.addLibraryPath(b.path("lib/")); //.{ .path = "lib/" });
     exe.linkSystemLibrary("SDL2");
     exe.linkLibC();
 
@@ -56,10 +56,14 @@ pub fn build(b: *std.Build) void {
     const run_step = b.step("run", "Run the app");
     run_step.dependOn(&run_cmd.step);
 
+    // Add a check step that only compiles without installing
+    const check_step = b.step("check", "Check if project compiles");
+    check_step.dependOn(&exe.step);
+
     // Creates a step for unit testing. This only builds the test executable
     // but does not run it.
     const unit_tests = b.addTest(.{
-        .root_source_file = .{ .path = "src/main.zig" },
+        .root_source_file = b.path("src/main.zig"), //.{ .path = "src/main.zig" },
         .target = target,
         .optimize = optimize,
     });

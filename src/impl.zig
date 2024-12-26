@@ -36,6 +36,9 @@ const FPS = 60;
 const PIXEL_WIDTH = WINDOW_WIDTH / SCREEN_WIDTH;
 const PIXEL_HEIGHT = WINDOW_HEIGHT / SCREEN_HEIGHT;
 
+const SAMPLE_FREQUENCY = 15360;
+const SAMPLE_COUNT = 256;
+
 const MSPF = 1000 / FPS;
 
 const Allocator = std.mem.Allocator;
@@ -118,9 +121,19 @@ const Vm = struct {
         self.m[1] = @intCast(bitflags & 0xff);
     }
 
-    fn getPixelDataStart(self: *Vm) usize {
+    /// Get the memory address for the start of pixel data.
+    fn getPixelDataStart(self: *const Vm) usize {
         const ret: usize = self.m[5];
         return (ret << 16);
+    }
+
+    /// Get the current audio buffer.
+    fn getAudioBuffer(self: *const Vm) []const u8 {
+        var loc: usize = self.m[6];
+        loc <<= 8;
+        loc |= self.m[7];
+        loc <<= 8;
+        return self.m[loc..(loc + SAMPLE_COUNT)];
     }
 };
 
@@ -138,8 +151,11 @@ pub fn run(vm: *Vm) !void {
     const renderer = try sdl.createRenderer(window);
     defer sdl.destroyRenderer(renderer);
 
+    const audio = try sdl.getAudioContext(sdl.RawAudioSpec{ .frequency = SAMPLE_FREQUENCY, .channels = 1, .samples = SAMPLE_COUNT });
+    defer audio.release();
+
     while (true) {
-        var start_time = sdl.ticks();
+        const start_time = sdl.ticks();
 
         var flags = [_]bool{false} ** 16;
         if (!sdl.handle_events(&flags)) break;
@@ -173,9 +189,12 @@ pub fn run(vm: *Vm) !void {
 
             sdl.presentRendered(renderer);
             // Deliberately avoiding clearing the renderer, since all pixel colours will be opaque.
+
+            // Queue / render audio from the buffer.
+            try audio.render(vm.getAudioBuffer());
         }
 
-        var elapsed = sdl.ticks() - start_time;
+        const elapsed = sdl.ticks() - start_time;
         if (elapsed < MSPF) {
             sdl.delay(MSPF - elapsed);
         }

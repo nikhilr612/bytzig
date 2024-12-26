@@ -7,7 +7,7 @@ pub fn main() !void {
     const a = std.heap.page_allocator;
     var vm = try emu.createVm(a); // The rare case when page allocator actually helps since memory size is large.
     // vm.zeroset(); // For now.
-    try vm.loadFile("PaletteTest.BytePusher");
+    try vm.loadFile("AudioTest.BytePusher");
     defer vm.deinit(a);
     try emu.run(&vm);
 }
